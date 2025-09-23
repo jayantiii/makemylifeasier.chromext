@@ -79,3 +79,4 @@ If you encounter any issues, please check:
 2. The gpt-oss-20b model is downloaded and loaded
 3. The API URL is correct (default: http://localhost:1234)
 4. The text is properly highlighted before clicking the extension
+# makemylifeasier.chromext
