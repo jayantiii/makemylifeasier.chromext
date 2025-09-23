@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Text to LLM",
+  "version": "1.0",
+  "description": "Highlight text and get AI responses instantly",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "contextMenus",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://localhost:*/*",
+    "https://localhost:*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Text to LLM"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "commands": {
+    "send_selection_to_llm": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "Command+Shift+L"
+      },
+      "description": "Send selected text to LLM"
+    }
+  }
+}

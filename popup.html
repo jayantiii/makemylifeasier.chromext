@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 400px;
+      height: 500px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #fff5f8;
+      color: #333;
+    }
+    
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    
+    .header h1 {
+      margin: 0;
+      color: #333;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    
+    .selected-text {
+      background: #fff;
+      border: 1px solid #ffd6e7;
+      border-radius: 10px;
+      padding: 10px;
+      margin-bottom: 12px;
+      font-size: 14px;
+      line-height: 1.4;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+    
+    .input-group {
+      margin-bottom: 15px;
+    }
+    
+    .input-group label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+      color: #3a3a3a;
+      font-size: 13px;
+    }
+    
+    .input-group input, .input-group select, .input-group textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #ffd6e7;
+      border-radius: 8px;
+      font-size: 14px;
+      box-sizing: border-box;
+      background: #fff;
+    }
+    
+    .input-group input:focus, .input-group select:focus, .input-group textarea:focus {
+      outline: none;
+      border-color: #ff9ec4;
+      box-shadow: 0 0 0 3px rgba(255, 158, 196, 0.2);
+      background: #fff;
+    }
+    
+    .btn {
+      background: #ff9ec4;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: background-color 0.2s;
+    }
+    
+    .btn:hover { background: #ff79af; }
+    .btn:disabled { background: #ffd1e2; cursor: not-allowed; }
+    
+    .response {
+      flex: 1;
+      background: #fff;
+      border: 1px solid #ffd6e7;
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 12px;
+      overflow-y: auto;
+      font-size: 14px;
+      line-height: 1.5;
+      max-height: 220px;
+      min-height: 110px;
+    }
+    
+    .loading { text-align: center; color: #777; font-style: italic; }
+    
+    .error { color: #b00020; background: #ffe3ea; border: 1px solid #ffc1d1; border-radius: 8px; padding: 10px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Text to LLM</h1>
+    </div>
+    
+    <div class="selected-text" id="selectedText">
+      🎮 No text selected. Please highlight some text on the page! 🎮
+    </div>
+    
+    <div class="input-group">
+      <label for="apiUrl">LM Studio API URL:</label>
+      <input type="text" id="apiUrl" placeholder="http://localhost:1234" value="http://localhost:1234">
+    </div>
+    
+    <div class="input-group">
+      <label for="modelName">Model Name (optional):</label>
+      <input type="text" id="modelName" placeholder="meta-llama-3.1-8b-instruct" value="meta-llama-3.1-8b-instruct">
+    </div>
+    
+    <div class="input-group">
+      <label for="prompt">Custom Prompt (optional):</label>
+      <input type="text" id="prompt" placeholder="e.g., 'Improve this text:' or 'Summarize this:'">
+    </div>
+    
+    
+    
+    <button class="btn" id="sendBtn"> SEND TO LLM </button>
+    
+    <div class="response" id="response">
+      <div class="loading" id="loading" style="display: none;">⚡ Processing... ⚡</div>
+      <div id="responseText"></div>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
