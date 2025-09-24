@@ -99,6 +99,32 @@
       line-height: 1.5;
       max-height: 220px;
       min-height: 110px;
+      position: relative;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: #ff9ec4;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: white;
+      opacity: 0.8;
+      transition: opacity 0.2s;
+    }
+    
+    .copy-btn:hover {
+      opacity: 1;
+    }
+    
+    .copy-btn:active {
+      background: #ff79af;
     }
     
     .loading { text-align: center; color: #777; font-style: italic; }
@@ -136,6 +162,7 @@
     <button class="btn" id="sendBtn"> SEND TO LLM </button>
     
     <div class="response" id="response">
+      <button class="copy-btn" id="copyBtn" style="display: none;">📋 Copy</button>
       <div class="loading" id="loading" style="display: none;">⚡ Processing... ⚡</div>
       <div id="responseText"></div>
     </div>

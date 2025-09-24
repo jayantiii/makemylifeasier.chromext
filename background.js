@@ -32,7 +32,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       body: JSON.stringify({
         model: modelName || 'meta-llama-3.1-8b-instruct',
         messages: Array.isArray(messages) && messages.length ? messages : [{ role: 'user', content: '' }],
-        max_tokens: 1000,
+        max_tokens: 2000,
         temperature: 0.7,
         stream: false
       })
