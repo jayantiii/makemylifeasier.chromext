@@ -112,17 +112,20 @@ document.addEventListener('DOMContentLoaded', function() {
         
         console.log('Popup opened, getting current selection from tab:', tabId);
         
-        // Always inject content script first to ensure it's loaded
+        // Try to get selection immediately first (in case content script is already loaded)
+        getCurrentSelection();
+        
+        // Also inject content script to ensure it's loaded for future updates
         chrome.scripting.executeScript({
           target: { tabId: tabId, allFrames: true },
           files: ['content.js']
         }, () => {
           console.log('Content script injected');
           
-          // Get current selection immediately
+          // Get current selection again after injection
           setTimeout(() => {
             getCurrentSelection();
-          }, 50);
+          }, 100);
         });
       });
     });
@@ -134,16 +137,19 @@ document.addEventListener('DOMContentLoaded', function() {
   function getCurrentSelection() {
     if (!currentTabId) return;
     
+    console.log('Getting current selection...');
+    
     chrome.tabs.sendMessage(currentTabId, { action: 'getSelectedText' }, function(response) {
       if (chrome.runtime.lastError) {
-        console.log('Error getting selection:', chrome.runtime.lastError.message);
+        console.log('Content script not available, trying direct injection:', chrome.runtime.lastError.message);
         // Fallback to direct script injection
         getSelectionDirectly();
       } else if (!response || !response.text || response.text.trim() === '') {
-        console.log('No current selection');
-        setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
+        console.log('No selection from content script, trying direct injection...');
+        // Try direct injection as backup
+        getSelectionDirectly();
       } else {
-        console.log('Got current selection:', response.text);
+        console.log('Got current selection from content script:', response.text);
         setSelectedTextUI(response.text);
       }
     });
@@ -151,6 +157,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
   function getSelectionDirectly() {
     if (!currentTabId) return;
+    
+    console.log('Running direct script injection to get current selection...');
     
     chrome.scripting.executeScript({
       target: { tabId: currentTabId, allFrames: true },
@@ -161,19 +169,19 @@ document.addEventListener('DOMContentLoaded', function() {
         function getSelectionText() {
           // 1. Try regular window selection first
           let text = window.getSelection().toString().trim();
-          console.log('Window selection:', text);
+          console.log('Direct injection - Window selection:', text);
           if (text) return text;
           
           // 2. Check if active element is input/textarea
           const activeEl = document.activeElement;
-          console.log('Active element:', activeEl);
+          console.log('Direct injection - Active element:', activeEl);
           if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
             const start = activeEl.selectionStart || 0;
             const end = activeEl.selectionEnd || 0;
-            console.log('Input selection:', start, end);
+            console.log('Direct injection - Input selection:', start, end);
             if (start !== end) {
               text = activeEl.value.substring(start, end).trim();
-              console.log('Input text:', text);
+              console.log('Direct injection - Input text:', text);
               if (text) return text;
             }
           }
@@ -183,28 +191,28 @@ document.addEventListener('DOMContentLoaded', function() {
             const shadowSelection = activeEl.shadowRoot.getSelection();
             if (shadowSelection) {
               text = shadowSelection.toString().trim();
-              console.log('Shadow selection:', text);
+              console.log('Direct injection - Shadow selection:', text);
               if (text) return text;
             }
           }
           
           // 4. Check all iframes
           const iframes = document.querySelectorAll('iframe');
-          console.log('Found iframes:', iframes.length);
+          console.log('Direct injection - Found iframes:', iframes.length);
           for (let iframe of iframes) {
             try {
               const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
               if (iframeDoc) {
                 text = iframeDoc.getSelection().toString().trim();
-                console.log('Iframe selection:', text);
+                console.log('Direct injection - Iframe selection:', text);
                 if (text) return text;
               }
             } catch (e) {
-              console.log('Cross-origin iframe, skipping');
+              console.log('Direct injection - Cross-origin iframe, skipping');
             }
           }
           
-          console.log('No selection found');
+          console.log('Direct injection - No selection found');
           return '';
         }
         
@@ -212,10 +220,11 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     }, (results) => {
       console.log('Direct script injection results:', results);
-      if (results && results[0] && results[0].result) {
+      if (results && results[0] && results[0].result && results[0].result.trim()) {
         console.log('Got selection via direct injection:', results[0].result);
         setSelectedTextUI(results[0].result);
       } else {
+        console.log('No selection found via direct injection');
         setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
       }
     });
