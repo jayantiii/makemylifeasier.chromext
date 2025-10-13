@@ -141,15 +141,17 @@
     <div class="selected-text" id="selectedText">
       🎮 No text selected. Please highlight some text on the page! 🎮
     </div>
+    <button class="btn" id="refreshBtn" style="margin-bottom: 12px; font-size: 12px; padding: 6px 12px;">🔄 Refresh Selection</button>
     
     <div class="input-group">
-      <label for="apiUrl">LM Studio API URL:</label>
-      <input type="text" id="apiUrl" placeholder="http://localhost:1234" value="http://localhost:1234">
-    </div>
-    
-    <div class="input-group">
-      <label for="modelName">Model Name (optional):</label>
-      <input type="text" id="modelName" placeholder="meta-llama-3.1-8b-instruct" value="meta-llama-3.1-8b-instruct">
+      <label for="aiMode">AI Mode:</label>
+      <select id="aiMode">
+        <option value="writer">✏️ Writer - Generate new content</option>
+        <option value="rewriter">🖊️ Rewriter - Improve selected text</option>
+      </select>
+      <small style="color: #666; font-size: 11px; margin-top: 4px; display: block;">
+        Powered by Chrome Built-in AI - No API key needed!
+      </small>
     </div>
     
     <div class="input-group">

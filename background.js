@@ -1,11 +1,13 @@
 // Background script
 chrome.runtime.onInstalled.addListener(function() {
   console.log('Text to LLM extension installed');
-  // Create context menu for sending selection
-  chrome.contextMenus.create({
-    id: 'send_selection_to_llm',
-    title: 'Send selected text to LLM',
-    contexts: ['selection']
+  // Create context menu for sending selection (remove existing first to prevent duplicates)
+  chrome.contextMenus.removeAll(function() {
+    chrome.contextMenus.create({
+      id: 'send_selection_to_llm',
+      title: 'Send selected text to LLM',
+      contexts: ['selection']
+    });
   });
 });
 
@@ -16,48 +18,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'lmstudioRequest') {
-    const { apiUrl, modelName, messages, session } = request.payload || {};
-
-    // Build full URL if needed
-    const fullUrl = apiUrl && apiUrl.endsWith('/v1/chat/completions')
-      ? apiUrl
-      : `${apiUrl}/v1/chat/completions`;
-
-    fetch(fullUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: modelName || 'meta-llama-3.1-8b-instruct',
-        messages: Array.isArray(messages) && messages.length ? messages : [{ role: 'user', content: '' }],
-        max_tokens: 2000,
-        temperature: 0.7,
-        stream: false
-      })
-    })
-      .then(async (resp) => {
-        if (!resp.ok) {
-          let errorMessage = `HTTP ${resp.status}: ${resp.statusText}`;
-          try {
-            const errData = await resp.json();
-            errorMessage = errData.error?.message || errorMessage;
-          } catch (_) {}
-          sendResponse({ ok: false, error: errorMessage });
-          return;
-        }
-        const data = await resp.json();
-        const text = data?.choices?.[0]?.message?.content || '';
-        sendResponse({ ok: true, text });
-      })
-      .catch((err) => {
-        sendResponse({ ok: false, error: err?.message || 'Network error' });
-      });
-
-    // Indicate async response
-    return true;
-  }
+  // Chrome Built-in AI APIs are called directly from popup.js
+  // No background script handling needed for Chrome AI APIs
 });
 
 // When the popup opens, proactively capture the current selection
@@ -83,10 +45,21 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'send_selection_to_llm') {
     const text = info.selectionText || '';
     if (text) {
+      console.log('Context menu clicked with text:', text);
       // Save to storage so popup picks it up
       chrome.storage.local.set({ selectedText: text }, () => {
-        // Open the popup by toggling the action popup (workaround: show a basic notification to prompt user)
-        chrome.action.openPopup?.();
+        console.log('Text saved to storage, opening popup...');
+        // Try to open popup - if it fails, show notification
+        try {
+          chrome.action.openPopup?.();
+        } catch (e) {
+          console.log('Could not open popup directly, showing notification');
+          chrome.notifications.create({
+            type: 'basic',
+            title: 'Text to LLM',
+            message: `Selected text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}" - Click extension icon to use it`
+          });
+        }
       });
     }
   }

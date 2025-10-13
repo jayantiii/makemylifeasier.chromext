@@ -7,11 +7,8 @@
     "activeTab",
     "storage",
     "contextMenus",
-    "scripting"
-  ],
-  "host_permissions": [
-    "http://localhost:*/*",
-    "https://localhost:*/*"
+    "scripting",
+    "notifications"
   ],
   "content_scripts": [
     {

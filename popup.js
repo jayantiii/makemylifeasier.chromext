@@ -2,11 +2,10 @@
 document.addEventListener('DOMContentLoaded', function() {
   const isExtensionEnv = !!(window.chrome && chrome.runtime && typeof chrome.runtime.sendMessage === 'function');
   const selectedTextEl = document.getElementById('selectedText');
-  const apiUrlInput = document.getElementById('apiUrl');
-  const modelNameInput = document.getElementById('modelName');
+  const aiModeSelect = document.getElementById('aiMode');
   const promptInput = document.getElementById('prompt');
-  // Removed system prompt and session inputs from popup UI (using LM Studio global system prompt instead)
   const sendBtn = document.getElementById('sendBtn');
+  const refreshBtn = document.getElementById('refreshBtn');
   const responseEl = document.getElementById('response');
   const loadingEl = document.getElementById('loading');
   const responseTextEl = document.getElementById('responseText');
@@ -14,23 +13,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Load saved settings (extension only)
   if (isExtensionEnv) {
-    chrome.storage.local.get(['apiUrl', 'modelName'], function(result) {
-      if (result.apiUrl) {
-        apiUrlInput.value = result.apiUrl;
-      }
-      if (result.modelName) {
-        modelNameInput.value = result.modelName;
+    chrome.storage.local.get(['aiMode'], function(result) {
+      if (result.aiMode) {
+        aiModeSelect.value = result.aiMode;
       }
     });
   }
 
   // Save settings when changed
-  apiUrlInput.addEventListener('input', function() {
-    if (isExtensionEnv) chrome.storage.local.set({ apiUrl: apiUrlInput.value });
+  aiModeSelect.addEventListener('change', function() {
+    if (isExtensionEnv) chrome.storage.local.set({ aiMode: aiModeSelect.value });
   });
-  
-  modelNameInput.addEventListener('input', function() {
-    if (isExtensionEnv) chrome.storage.local.set({ modelName: modelNameInput.value });
+
+  // Refresh selection button
+  refreshBtn.addEventListener('click', function() {
+    if (isExtensionEnv) {
+      console.log('Refreshing selection...');
+      setSelectedTextUI('🔄 Refreshing selection...');
+      getCurrentSelection();
+    }
   });
 
   // no-op (system prompt is handled in LM Studio)
@@ -70,112 +71,154 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // On popup open, always try to get current selection first
+  // Real-time selection handling
+  let currentTabId = null;
+  
+  // Listen for real-time selection updates from content script
   if (isExtensionEnv) {
-    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
-      const tabId = tabs && tabs[0] && tabs[0].id;
-      if (!tabId) {
-        setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === 'selectionChanged') {
+        console.log('Real-time selection update:', request.text ? `"${request.text}"` : '(empty)');
+        if (request.text && request.text.trim()) {
+          setSelectedTextUI(request.text);
+        } else {
+          setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
+        }
+      }
+    });
+  }
+
+  // On popup open, get current selection immediately
+  if (isExtensionEnv) {
+    // First check if there's stored text from context menu
+    chrome.storage.local.get(['selectedText'], function(result) {
+      if (result.selectedText && result.selectedText.trim()) {
+        console.log('Found stored text from context menu:', result.selectedText);
+        setSelectedTextUI(result.selectedText);
+        // Clear the stored text so it doesn't persist
+        chrome.storage.local.remove(['selectedText']);
         return;
       }
       
-      console.log('Popup opened, trying to get selection from tab:', tabId);
-      
-      // First, test if content script is loaded
-      chrome.tabs.sendMessage(tabId, { action: 'ping' }, function(response) {
-        if (chrome.runtime.lastError) {
-          console.log('Content script not loaded, error:', chrome.runtime.lastError.message);
-          console.log('Trying script injection fallback...');
-          
-          // Try alternative method: inject script to get selection with comprehensive handling
-          chrome.scripting.executeScript({
-            target: { tabId: tabId, allFrames: true },
-            function: () => {
-              console.log('Script injection running...');
-              
-              // Function to get selection from any context
-              function getSelectionText() {
-                // 1. Try regular window selection first
-                let text = window.getSelection().toString().trim();
-                console.log('Window selection:', text);
-                if (text) return text;
-                
-                // 2. Check if active element is input/textarea
-                const activeEl = document.activeElement;
-                console.log('Active element:', activeEl);
-                if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
-                  const start = activeEl.selectionStart || 0;
-                  const end = activeEl.selectionEnd || 0;
-                  console.log('Input selection:', start, end);
-                  if (start !== end) {
-                    text = activeEl.value.substring(start, end).trim();
-                    console.log('Input text:', text);
-                    if (text) return text;
-                  }
-                }
-                
-                // 3. Check shadow DOM
-                if (activeEl && activeEl.shadowRoot) {
-                  const shadowSelection = activeEl.shadowRoot.getSelection();
-                  if (shadowSelection) {
-                    text = shadowSelection.toString().trim();
-                    console.log('Shadow selection:', text);
-                    if (text) return text;
-                  }
-                }
-                
-                // 4. Check all iframes
-                const iframes = document.querySelectorAll('iframe');
-                console.log('Found iframes:', iframes.length);
-                for (let iframe of iframes) {
-                  try {
-                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-                    if (iframeDoc) {
-                      text = iframeDoc.getSelection().toString().trim();
-                      console.log('Iframe selection:', text);
-                      if (text) return text;
-                    }
-                  } catch (e) {
-                    console.log('Cross-origin iframe, skipping');
-                  }
-                }
-                
-                console.log('No selection found');
-                return '';
-              }
-              
-              return getSelectionText();
-            }
-          }, (results) => {
-            console.log('Script injection results:', results);
-            if (results && results[0] && results[0].result) {
-              console.log('Got selection via script injection:', results[0].result);
-              setSelectedTextUI(results[0].result);
-            } else {
-              setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
-            }
-          });
-        } else {
-          console.log('Content script is loaded, getting selection...');
-          // Content script is loaded, now get the selection
-          chrome.tabs.sendMessage(tabId, { action: 'getSelectedText' }, function(response) {
-            if (chrome.runtime.lastError) {
-              console.log('Error getting selection:', chrome.runtime.lastError.message);
-              setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
-            } else if (!response || !response.text || response.text.trim() === '') {
-              console.log('No selection from content script');
-              setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
-            } else {
-              console.log('Got selection from content script:', response.text);
-              setSelectedTextUI(response.text);
-            }
-          });
+      // No stored text, get current selection immediately
+      chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+        const tabId = tabs && tabs[0] && tabs[0].id;
+        currentTabId = tabId;
+        
+        if (!tabId) {
+          setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
+          return;
         }
+        
+        console.log('Popup opened, getting current selection from tab:', tabId);
+        
+        // Always inject content script first to ensure it's loaded
+        chrome.scripting.executeScript({
+          target: { tabId: tabId, allFrames: true },
+          files: ['content.js']
+        }, () => {
+          console.log('Content script injected');
+          
+          // Get current selection immediately
+          setTimeout(() => {
+            getCurrentSelection();
+          }, 50);
+        });
       });
     });
   } else {
     // Preview mode
     setSelectedTextUI('This is a preview. Highlighted text will appear here in the real extension.');
+  }
+
+  function getCurrentSelection() {
+    if (!currentTabId) return;
+    
+    chrome.tabs.sendMessage(currentTabId, { action: 'getSelectedText' }, function(response) {
+      if (chrome.runtime.lastError) {
+        console.log('Error getting selection:', chrome.runtime.lastError.message);
+        // Fallback to direct script injection
+        getSelectionDirectly();
+      } else if (!response || !response.text || response.text.trim() === '') {
+        console.log('No current selection');
+        setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
+      } else {
+        console.log('Got current selection:', response.text);
+        setSelectedTextUI(response.text);
+      }
+    });
+  }
+
+  function getSelectionDirectly() {
+    if (!currentTabId) return;
+    
+    chrome.scripting.executeScript({
+      target: { tabId: currentTabId, allFrames: true },
+      function: () => {
+        console.log('Direct script injection running...');
+        
+        // Function to get selection from any context
+        function getSelectionText() {
+          // 1. Try regular window selection first
+          let text = window.getSelection().toString().trim();
+          console.log('Window selection:', text);
+          if (text) return text;
+          
+          // 2. Check if active element is input/textarea
+          const activeEl = document.activeElement;
+          console.log('Active element:', activeEl);
+          if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+            const start = activeEl.selectionStart || 0;
+            const end = activeEl.selectionEnd || 0;
+            console.log('Input selection:', start, end);
+            if (start !== end) {
+              text = activeEl.value.substring(start, end).trim();
+              console.log('Input text:', text);
+              if (text) return text;
+            }
+          }
+          
+          // 3. Check shadow DOM
+          if (activeEl && activeEl.shadowRoot) {
+            const shadowSelection = activeEl.shadowRoot.getSelection();
+            if (shadowSelection) {
+              text = shadowSelection.toString().trim();
+              console.log('Shadow selection:', text);
+              if (text) return text;
+            }
+          }
+          
+          // 4. Check all iframes
+          const iframes = document.querySelectorAll('iframe');
+          console.log('Found iframes:', iframes.length);
+          for (let iframe of iframes) {
+            try {
+              const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+              if (iframeDoc) {
+                text = iframeDoc.getSelection().toString().trim();
+                console.log('Iframe selection:', text);
+                if (text) return text;
+              }
+            } catch (e) {
+              console.log('Cross-origin iframe, skipping');
+            }
+          }
+          
+          console.log('No selection found');
+          return '';
+        }
+        
+        return getSelectionText();
+      }
+    }, (results) => {
+      console.log('Direct script injection results:', results);
+      if (results && results[0] && results[0].result) {
+        console.log('Got selection via direct injection:', results[0].result);
+        setSelectedTextUI(results[0].result);
+      } else {
+        setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
+      }
+    });
   }
 
 
@@ -188,126 +231,203 @@ document.addEventListener('DOMContentLoaded', function() {
   // Send to LLM
   sendBtn.addEventListener('click', async function() {
     const selectedText = selectedTextEl.textContent;
-    const apiUrl = apiUrlInput.value.trim();
-    const modelName = modelNameInput.value.trim();
+    const aiMode = aiModeSelect.value;
     const customPrompt = promptInput.value.trim();
 
-    if (!selectedText || selectedText === 'No text selected. Please highlight some text on the page.') {
-      showError('Please select some text on the page first.');
+    console.log('Selected text:', selectedText);
+    console.log('AI Mode:', aiMode);
+    console.log('Custom prompt:', customPrompt);
+    console.log('Is extension env:', isExtensionEnv);
+
+    // For Writer mode, we need either custom prompt or selected text
+    // For Rewriter mode, we need selected text
+    if (aiMode === 'rewriter' && (!selectedText || selectedText.includes('No text selected') || selectedText.includes('🎮'))) {
+      showError('Please select some text to rewrite.');
       return;
     }
 
-    if (!apiUrl && isExtensionEnv) {
-      showError('Please enter the LM Studio API URL.');
+    if (aiMode === 'writer' && !customPrompt && (!selectedText || selectedText.includes('No text selected') || selectedText.includes('🎮'))) {
+      showError('Please enter a custom prompt or select some text for the Writer.');
       return;
     }
 
-    // Build messages: combine custom prompt with selected text, and add system prompt
-    const messages = [];
-    
-    // Add system prompt with Jayanti's full context
-    messages.push({ 
-      role: 'system', 
-      content: `You are Jayanti Lahoti's writing assistant. You know Jayanti's complete background:
+    // Build content for Chrome Built-in AI APIs
+    let content = '';
+    let systemPrompt = `You are a professional writing assistant for Jayanti Lahoti. Always produce a final, send-ready answer with no placeholders, brackets, or TODOs. Do not ask questions unless explicitly requested.
 
-EDUCATION:
-- MS in Computer Science Engineering, University of California, San Diego, USA (2024-2026)
-- GPA: 4.0, Specialization: Artificial Intelligence
-- Teaching Assistant (TA) at Global Policy School for AI summer school
-- Teaching Assistant at Qualcomm Institute in UCSD for Google Cloud Platform Machine Learning
-- International Elite Summer School in Robotics and Entrepreneurship, Denmark (August 2025)
-- B.E in Computer Science Engineering, BMS College of Engineering, India (2019-2023)
-- GPA: 8.55, Organized NGO events, taught chess, built chess club website
+Profile (use for tailoring without restating it):
+- MS CSE @ UC San Diego (GPA 4.0), AI specialization; TA for AI and GCP ML
+- Perception Researcher: ROS object detection, multimodal sensor fusion
+- HPE Software Engineer: React UI, microservices (gRPC/Protobuf), CI/CD (Jenkins/Helm/Docker), K8s; reduced server management time by 35%; raised test coverage 10%→95%
+- HPE R&D Intern: 10k-record mock server; inventory dashboard; test automation
+- Projects: LEGO 6D pose; waste-seg CV + robotic arm (80% accuracy, publication); wind-energy time-series ML; Next.js collab platform
+- Skills: Python, JS/TS, React/Next.js, SQL/NoSQL, Linux, Kafka, PyTorch/TensorFlow, GCP/AWS/Azure, Docker/K8s, CI/CD, testing
 
-PROFESSIONAL EXPERIENCE:
-- Perception Researcher, Autonomous Vehicle Lab (Oct 2024 - June 2025): Engineered ROS node for object detection, researched multimodal sensor fusion algorithms
-- Software Engineer, Hewlett Packard Enterprise (Aug 2023 - Aug 2024): Reduced server management time by 35% with React-based UI, architected CI/CD pipelines with Jenkins/Helm/Docker, raised test coverage from 10% to 95%, collaborated on scalable microservices with gRPC
-- Research and Development Intern, Hewlett Packard Enterprise (Jan 2023 - July 2023): Built mirage mock server supporting 10,000+ records, designed inventory dashboard reducing manual tracking by 45%
+Style & constraints:
+- Tone: concise, confident, warm, and professional; US spelling; active voice
+- Cover letters: 150–250 words; 3–5 short paragraphs (hook, match, evidence, motivation, close)
+- Emails: include a clear subject, direct ask/CTA, and sign-off (“Best regards, Jayanti Lahoti”)
+- Application answers: direct, examples with quantified impact; respect any word/char limits
+- If a job description or context is provided, tailor with relevant achievements and keywords
+- Do not include meta commentary about your process; just the final copy
+- No brackets like [Company], [Role], or placeholders—infer from context or write neutral but complete copy`;
 
-PROJECTS:
-- Lego Segmentation and Pose estimation with LEGO Group: Vision system for 6D pose estimation, trained on 20,000+ images
-- Multi-Waste Segregation using Computer Vision and Robotic Arm: Led 4-person team, achieved 80% accuracy, published in peer-reviewed journal
-- AI for Wind Energy Vibration Data Analysis with FruitPunch AI: Built time-series ML models, improved classification accuracy by 15%
-- Hack-Connect Platform: Developed university collaboration platform with Next.js, TypeScript, REST APIs
-
-SKILLS: Python, JavaScript/TypeScript, Go, C/C++, React/Next.js, SQL/NoSQL, Linux, TCP/IP, Kafka, PyTorch/TensorFlow, GCP/AWS/Azure, Docker/K8s, CI/CD, testing, Prometheus/Grafana
-
-Write concise, professional emails, cover letters, and application answers. Use active voice, US spelling, and a confident, warm tone. If a job description is provided, tailor with Jayanti's most relevant achievements and quantified impact. Also incorporate relevant keywords from the job description naturally into the response to show alignment with the role requirements.` 
-    });
-    
-    // Combine custom prompt with selected text
-    let userContent = selectedText;
-    if (customPrompt) {
-      userContent = `${customPrompt}\n\n${selectedText}`;
+    if (aiMode === 'writer') {
+      // Writer mode: generate new content
+      if (customPrompt && selectedText && !selectedText.includes('No text selected') && !selectedText.includes('🎮')) {
+        content = `${systemPrompt}\n\nUser request: ${customPrompt}\n\nContext: ${selectedText}`;
+      } else if (customPrompt) {
+        content = `${systemPrompt}\n\nUser request: ${customPrompt}`;
+      } else if (selectedText && !selectedText.includes('No text selected') && !selectedText.includes('🎮')) {
+        content = `${systemPrompt}\n\nUser request: Write about this: ${selectedText}`;
+      }
+    } else if (aiMode === 'rewriter') {
+      // Rewriter mode: improve selected text
+      content = `${systemPrompt}\n\nPlease rewrite and improve this text: ${selectedText}`;
     }
-    messages.push({ role: 'user', content: userContent });
+    
+    console.log('AI Mode:', aiMode);
+    console.log('Content for AI:', content);
 
     try {
       showLoading(true);
+      console.log('Using Chrome Built-in AI API:', aiMode);
+      
       if (isExtensionEnv) {
-        // Prefer background fetch to avoid CORS and mixed-content issues
-        const bgResp = await chrome.runtime.sendMessage({
-          action: 'lmstudioRequest',
-          payload: { apiUrl, modelName, messages }
-        });
-
-        if (!bgResp || !bgResp.ok) {
-          const bgError = bgResp?.error || 'Failed to fetch';
-          // Fallback to direct fetch from popup
-          try {
-            const direct = await sendToLMStudio(messages, apiUrl, modelName);
-            showResponse(direct);
-          } catch (directErr) {
-            showError('Error: ' + bgError + (directErr?.message ? `; Fallback: ${directErr.message}` : ''));
-          }
-          return;
+        // Check if Chrome Built-in AI APIs are available
+        console.log('Checking Chrome AI availability...');
+        console.log('chrome object:', typeof chrome);
+        console.log('chrome.ai:', chrome?.ai);
+        console.log('chrome.ai.writer:', chrome?.ai?.writer);
+        console.log('chrome.ai.rewriter:', chrome?.ai?.rewriter);
+        
+        // Try different ways to access the AI APIs
+        let aiWriter = null;
+        let aiRewriter = null;
+        
+        // Check for different possible API locations
+        if (chrome?.ai?.writer) {
+          aiWriter = chrome.ai.writer;
+        } else if (chrome?.writer) {
+          aiWriter = chrome.writer;
+        } else if (window?.Writer) {
+          aiWriter = window.Writer;
         }
-
-        showResponse(bgResp.text);
+        
+        if (chrome?.ai?.rewriter) {
+          aiRewriter = chrome.ai.rewriter;
+        } else if (chrome?.rewriter) {
+          aiRewriter = chrome.rewriter;
+        } else if (window?.Rewriter) {
+          aiRewriter = window.Rewriter;
+        }
+        
+        console.log('Found aiWriter:', !!aiWriter);
+        console.log('Found aiRewriter:', !!aiRewriter);
+        
+        if (aiWriter || aiRewriter) {
+          // Use Chrome Built-in AI APIs
+          let result;
+          
+          if (aiMode === 'writer' && aiWriter) {
+            // Use Writer API - need to create instance first
+            try {
+              console.log('Creating Writer instance...');
+              const writer = await aiWriter.create();
+              console.log('Writer instance created:', writer);
+              console.log('Writer methods:', Object.getOwnPropertyNames(writer));
+              console.log('Writer prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(writer)));
+              
+              // Try different method names
+              if (typeof writer.write === 'function') {
+                result = await writer.write(content);
+              } else if (typeof writer.generate === 'function') {
+                result = await writer.generate(content);
+              } else if (typeof writer.createText === 'function') {
+                result = await writer.createText(content);
+              } else if (typeof writer.complete === 'function') {
+                result = await writer.complete(content);
+              } else {
+                // Try calling it directly
+                result = await writer(content);
+              }
+              
+              console.log('Writer result:', result);
+            } catch (apiError) {
+              console.error('Writer API error:', apiError);
+              throw new Error(`Writer API error: ${apiError.message}`);
+            }
+          } else if (aiMode === 'rewriter' && aiRewriter) {
+            // Use Rewriter API - need to create instance first
+            try {
+              console.log('Creating Rewriter instance...');
+              const rewriter = await aiRewriter.create();
+              console.log('Rewriter instance created:', rewriter);
+              console.log('Rewriter methods:', Object.getOwnPropertyNames(rewriter));
+              console.log('Rewriter prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(rewriter)));
+              
+              // Try different method names
+              if (typeof rewriter.rewrite === 'function') {
+                result = await rewriter.rewrite(selectedText, content);
+              } else if (typeof rewriter.improve === 'function') {
+                result = await rewriter.improve(selectedText, content);
+              } else if (typeof rewriter.enhance === 'function') {
+                result = await rewriter.enhance(selectedText, content);
+              } else if (typeof rewriter.edit === 'function') {
+                result = await rewriter.edit(selectedText, content);
+              } else {
+                // Try calling it directly with both parameters
+                result = await rewriter(selectedText, content);
+              }
+              
+              console.log('Rewriter result:', result);
+            } catch (apiError) {
+              console.error('Rewriter API error:', apiError);
+              throw new Error(`Rewriter API error: ${apiError.message}`);
+            }
+          } else {
+            throw new Error(`${aiMode} API not available. Please enable Chrome Built-in AI flags.`);
+          }
+          
+          console.log('Chrome AI result:', result);
+          showResponse(result.text || result.content || result || 'No response received');
+        } else {
+          // Fallback: Use a simple mock response with your system prompt
+          console.log('Chrome Built-in AI not available, using fallback');
+          console.log('Chrome version:', navigator.userAgent);
+          console.log('Available chrome properties:', Object.keys(chrome || {}));
+          await new Promise(r => setTimeout(r, 1000));
+          
+          if (aiMode === 'writer') {
+            // Generate a proper fallback response based on the prompt
+            let response = `[Writer Mode - Fallback]\n\nBased on your background as a Computer Science Engineering student at UCSD with experience at HPE and the Autonomous Vehicle Lab:\n\n`;
+            
+            if (customPrompt.toLowerCase().includes('cover letter')) {
+              response += `**Cover Letter Template:**\n\nDear Hiring Manager,\n\nI am writing to express my strong interest in the [Position Title] role at [Company Name]. As a Computer Science Engineering student at UCSD with a 4.0 GPA and specialization in Artificial Intelligence, I bring a unique combination of academic excellence and practical experience.\n\nMy professional experience includes:\n• Software Engineer at Hewlett Packard Enterprise (Aug 2023 - Aug 2024): Reduced server management time by 35% with React-based UI, architected CI/CD pipelines\n• Research and Development Intern at HPE (Jan 2023 - July 2023): Built mirage mock server supporting 10,000+ records\n• Current role as Perception Researcher at Autonomous Vehicle Lab: Engineered ROS node for object detection\n\nMy technical skills include Python, JavaScript/TypeScript, React/Next.js, AWS/GCP/Azure, Docker/K8s, and I have experience with PyTorch/TensorFlow for machine learning projects.\n\nI am excited about the opportunity to contribute to [Company Name] and would welcome the chance to discuss how my background aligns with your needs.\n\nSincerely,\nJayanti Lahoti\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
+            } else if (customPrompt.toLowerCase().includes('email')) {
+              response += `**Professional Email:**\n\nSubject: ${customPrompt}\n\nDear [Recipient],\n\nI hope this email finds you well. [Customize based on your specific request]\n\nBest regards,\nJayanti Lahoti\nComputer Science Engineering Student\nUC San Diego\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
+            } else {
+              response += `**Professional Response:**\n\n${customPrompt}\n\nGiven my background in Computer Science Engineering at UCSD, experience at HPE, and current research at the Autonomous Vehicle Lab, I would approach this by [provide specific insights based on your technical background].\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
+            }
+            
+            showResponse(response);
+          } else if (aiMode === 'rewriter') {
+            showResponse(`[Rewriter Mode - Fallback]\n\n**Improved version of your selected text:**\n\n"${selectedText}"\n\n**Suggested improvements:**\n• Fix grammar and spelling\n• Use more professional tone\n• Add specific details and examples\n• Structure with clear paragraphs\n\n[Note: Enable Chrome Built-in AI flags for full rewriting functionality]`);
+          }
+        }
       } else {
         // Preview mode: synthesize a mock response
         await new Promise(r => setTimeout(r, 400));
-        showResponse('[Preview] Response would appear here.');
+        showResponse(`[Preview] ${aiMode === 'writer' ? 'Writer' : 'Rewriter'} response would appear here.`);
       }
     } catch (error) {
+      console.error('Chrome AI API error:', error);
       showError('Error: ' + error.message);
     } finally {
       showLoading(false);
     }
   });
 
-  async function sendToLMStudio(messages, apiUrl, modelName) {
-    // Ensure the URL has the correct endpoint
-    const fullUrl = apiUrl.endsWith('/v1/chat/completions') ? apiUrl : `${apiUrl}/v1/chat/completions`;
-    
-    const response = await fetch(fullUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: modelName || 'meta-llama-3.1-8b-instruct',
-        messages: messages,
-        max_tokens: 2000,
-        temperature: 0.7,
-        stream: false
-      })
-    });
-
-    if (!response.ok) {
-      let errorMessage = 'Failed to get response from LM Studio';
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.error?.message || errorMessage;
-      } catch (e) {
-        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-  }
 
   function showLoading(show) {
     loadingEl.style.display = show ? 'block' : 'none';

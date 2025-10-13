@@ -1,32 +1,31 @@
-// Content script to handle text selection
+// Content script to handle real-time text selection
 let selectedText = '';
+let lastSelectionTime = 0;
 
-function captureSelection() {
+function getCurrentSelection() {
   try {
     let text = '';
     
     // 1. Try regular window selection first
-    text = (window.getSelection && window.getSelection().toString()) || '';
-    console.log('Content script checking window selection:', text);
-    if (text.trim()) {
-      selectedText = text.trim();
-      console.log('Content script captured selection (window):', selectedText);
-      return;
+    const selection = window.getSelection();
+    if (selection) {
+      text = selection.toString().trim();
+      console.log('Real-time selection check (window):', text);
+      if (text) {
+        return text;
+      }
     }
     
     // 2. Check if active element is input/textarea
     const activeEl = document.activeElement;
-    console.log('Content script active element:', activeEl);
     if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
       const start = activeEl.selectionStart || 0;
       const end = activeEl.selectionEnd || 0;
-      console.log('Content script input selection:', start, end);
       if (start !== end) {
         text = activeEl.value.substring(start, end).trim();
+        console.log('Real-time selection check (input):', text);
         if (text) {
-          selectedText = text;
-          console.log('Content script captured selection (input):', selectedText);
-          return;
+          return text;
         }
       }
     }
@@ -36,45 +35,96 @@ function captureSelection() {
       const shadowSelection = activeEl.shadowRoot.getSelection();
       if (shadowSelection) {
         text = shadowSelection.toString().trim();
+        console.log('Real-time selection check (shadow):', text);
         if (text) {
-          selectedText = text;
-          console.log('Content script captured selection (shadow):', selectedText);
-          return;
+          return text;
         }
       }
     }
     
-    // No selection found
-    selectedText = '';
-    console.log('Content script: no selection found');
+    // 4. Check all iframes
+    const iframes = document.querySelectorAll('iframe');
+    for (let iframe of iframes) {
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        if (iframeDoc) {
+          text = iframeDoc.getSelection().toString().trim();
+          if (text) {
+            console.log('Real-time selection check (iframe):', text);
+            return text;
+          }
+        }
+      } catch (e) {
+        // Cross-origin iframe, skip
+      }
+    }
+    
+    return '';
   } catch (e) {
-    selectedText = '';
-    console.log('Content script selection error:', e);
+    console.log('Real-time selection error:', e);
+    return '';
   }
 }
 
-// Capture on multiple events for reliability with timing
-function captureSelectionWithDelay() {
-  // Small delay to let selection settle
-  setTimeout(captureSelection, 10);
+function updateSelection() {
+  const currentTime = Date.now();
+  const newSelection = getCurrentSelection();
+  
+  // Only update if selection actually changed
+  if (newSelection !== selectedText) {
+    selectedText = newSelection;
+    lastSelectionTime = currentTime;
+    console.log('Selection updated:', selectedText ? `"${selectedText}"` : '(empty)');
+    
+    // Notify popup if it's open
+    chrome.runtime.sendMessage({
+      action: 'selectionChanged',
+      text: selectedText,
+      timestamp: currentTime
+    }).catch(() => {
+      // Popup might not be open, that's okay
+    });
+  }
 }
 
-document.addEventListener('mouseup', captureSelectionWithDelay, true);
-document.addEventListener('selectionchange', captureSelectionWithDelay, true);
+// Real-time selection updates with immediate response
+function updateSelectionImmediate() {
+  updateSelection();
+}
+
+// More frequent updates for real-time feel
+function updateSelectionWithDelay() {
+  setTimeout(updateSelection, 5);
+}
+
+// Immediate updates on selection changes
+document.addEventListener('selectionchange', updateSelectionImmediate, true);
+document.addEventListener('mouseup', updateSelectionWithDelay, true);
+document.addEventListener('mousedown', updateSelectionWithDelay, true);
+
+// Keyboard events
 document.addEventListener('keyup', (e) => {
   if (e && (e.key === 'Shift' || e.key === 'Meta' || e.key === 'Control' || e.key === 'Alt')) return;
-  captureSelectionWithDelay();
+  updateSelectionWithDelay();
 }, true);
 
-// Additional events for better coverage
 document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-    captureSelectionWithDelay();
+    updateSelectionWithDelay();
   }
 }, true);
 
-// Handle input/textarea selection changes
-document.addEventListener('input', captureSelectionWithDelay, true);
+// Input/textarea events
+document.addEventListener('input', updateSelectionImmediate, true);
+document.addEventListener('focus', updateSelectionWithDelay, true);
+document.addEventListener('blur', updateSelectionWithDelay, true);
+
+// Additional listeners for complex sites
+document.body.addEventListener('mouseup', updateSelectionWithDelay, true);
+document.body.addEventListener('selectionchange', updateSelectionImmediate, true);
+
+// Periodic check to catch any missed updates
+setInterval(updateSelection, 100);
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
