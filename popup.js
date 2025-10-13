@@ -76,16 +76,24 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Listen for real-time selection updates from content script
   if (isExtensionEnv) {
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      if (request.action === 'selectionChanged') {
-        console.log('Real-time selection update:', request.text ? `"${request.text}"` : '(empty)');
-        if (request.text && request.text.trim()) {
-          setSelectedTextUI(request.text);
-        } else {
-          setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
+    try {
+      chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        try {
+          if (request.action === 'selectionChanged') {
+            console.log('Real-time selection update:', request.text ? `"${request.text}"` : '(empty)');
+            if (request.text && request.text.trim()) {
+              setSelectedTextUI(request.text);
+            } else {
+              setSelectedTextUI('🎮 No text selected. Please highlight some text on the page! 🎮');
+            }
+          }
+        } catch (e) {
+          console.log('Error handling real-time selection update:', e);
         }
-      }
-    });
+      });
+    } catch (e) {
+      console.log('Extension context invalidated, real-time updates disabled');
+    }
   }
 
   // On popup open, get current selection immediately
@@ -115,17 +123,30 @@ document.addEventListener('DOMContentLoaded', function() {
         // Try to get selection immediately first (in case content script is already loaded)
         getCurrentSelection();
         
-        // Also inject content script to ensure it's loaded for future updates
-        chrome.scripting.executeScript({
-          target: { tabId: tabId, allFrames: true },
-          files: ['content.js']
-        }, () => {
-          console.log('Content script injected');
-          
-          // Get current selection again after injection
-          setTimeout(() => {
-            getCurrentSelection();
-          }, 100);
+        // Check if content script is already loaded before injecting
+        chrome.tabs.sendMessage(tabId, { action: 'ping' }, function(response) {
+          if (chrome.runtime.lastError) {
+            // Content script not loaded, inject it
+            console.log('Content script not loaded, injecting...');
+            chrome.scripting.executeScript({
+              target: { tabId: tabId, allFrames: true },
+              files: ['content.js']
+            }, () => {
+              console.log('Content script injected');
+              
+              // Get current selection after injection
+              setTimeout(() => {
+                getCurrentSelection();
+              }, 100);
+            });
+          } else {
+            // Content script already loaded
+            console.log('Content script already loaded');
+            // Get current selection again
+            setTimeout(() => {
+              getCurrentSelection();
+            }, 50);
+          }
         });
       });
     });
@@ -139,20 +160,25 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('Getting current selection...');
     
-    chrome.tabs.sendMessage(currentTabId, { action: 'getSelectedText' }, function(response) {
-      if (chrome.runtime.lastError) {
-        console.log('Content script not available, trying direct injection:', chrome.runtime.lastError.message);
-        // Fallback to direct script injection
-        getSelectionDirectly();
-      } else if (!response || !response.text || response.text.trim() === '') {
-        console.log('No selection from content script, trying direct injection...');
-        // Try direct injection as backup
-        getSelectionDirectly();
-      } else {
-        console.log('Got current selection from content script:', response.text);
-        setSelectedTextUI(response.text);
-      }
-    });
+    try {
+      chrome.tabs.sendMessage(currentTabId, { action: 'getSelectedText' }, function(response) {
+        if (chrome.runtime.lastError) {
+          console.log('Content script not available, trying direct injection:', chrome.runtime.lastError.message);
+          // Fallback to direct script injection
+          getSelectionDirectly();
+        } else if (!response || !response.text || response.text.trim() === '') {
+          console.log('No selection from content script, trying direct injection...');
+          // Try direct injection as backup
+          getSelectionDirectly();
+        } else {
+          console.log('Got current selection from content script:', response.text);
+          setSelectedTextUI(response.text);
+        }
+      });
+    } catch (e) {
+      console.log('Extension context invalidated, trying direct injection:', e);
+      getSelectionDirectly();
+    }
   }
 
   function getSelectionDirectly() {
@@ -347,18 +373,18 @@ Style & constraints:
               console.log('Writer methods:', Object.getOwnPropertyNames(writer));
               console.log('Writer prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(writer)));
               
-              // Try different method names
+              // Try different method names with language specification
               if (typeof writer.write === 'function') {
-                result = await writer.write(content);
+                result = await writer.write(content, { language: 'en' });
               } else if (typeof writer.generate === 'function') {
-                result = await writer.generate(content);
+                result = await writer.generate(content, { language: 'en' });
               } else if (typeof writer.createText === 'function') {
-                result = await writer.createText(content);
+                result = await writer.createText(content, { language: 'en' });
               } else if (typeof writer.complete === 'function') {
-                result = await writer.complete(content);
+                result = await writer.complete(content, { language: 'en' });
               } else {
-                // Try calling it directly
-                result = await writer(content);
+                // Try calling it directly with language
+                result = await writer(content, { language: 'en' });
               }
               
               console.log('Writer result:', result);
@@ -375,18 +401,18 @@ Style & constraints:
               console.log('Rewriter methods:', Object.getOwnPropertyNames(rewriter));
               console.log('Rewriter prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(rewriter)));
               
-              // Try different method names
+              // Try different method names with language specification
               if (typeof rewriter.rewrite === 'function') {
-                result = await rewriter.rewrite(selectedText, content);
+                result = await rewriter.rewrite(selectedText, content, { language: 'en' });
               } else if (typeof rewriter.improve === 'function') {
-                result = await rewriter.improve(selectedText, content);
+                result = await rewriter.improve(selectedText, content, { language: 'en' });
               } else if (typeof rewriter.enhance === 'function') {
-                result = await rewriter.enhance(selectedText, content);
+                result = await rewriter.enhance(selectedText, content, { language: 'en' });
               } else if (typeof rewriter.edit === 'function') {
-                result = await rewriter.edit(selectedText, content);
+                result = await rewriter.edit(selectedText, content, { language: 'en' });
               } else {
-                // Try calling it directly with both parameters
-                result = await rewriter(selectedText, content);
+                // Try calling it directly with both parameters and language
+                result = await rewriter(selectedText, content, { language: 'en' });
               }
               
               console.log('Rewriter result:', result);
