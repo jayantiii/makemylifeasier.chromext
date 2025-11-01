@@ -144,19 +144,11 @@
     <button class="btn" id="refreshBtn" style="margin-bottom: 12px; font-size: 12px; padding: 6px 12px;">🔄 Refresh Selection</button>
     
     <div class="input-group">
-      <label for="aiMode">AI Mode:</label>
-      <select id="aiMode">
-        <option value="writer">✏️ Writer - Generate new content</option>
-        <option value="rewriter">🖊️ Rewriter - Improve selected text</option>
-      </select>
+      <label for="prompt">Custom Prompt (optional):</label>
+      <input type="text" id="prompt" placeholder="e.g., 'Write a cover letter for...' or 'Generate an email about...'">
       <small style="color: #666; font-size: 11px; margin-top: 4px; display: block;">
         Powered by Chrome Built-in AI - No API key needed!
       </small>
-    </div>
-    
-    <div class="input-group">
-      <label for="prompt">Custom Prompt (optional):</label>
-      <input type="text" id="prompt" placeholder="e.g., 'Improve this text:' or 'Summarize this:'">
     </div>
     
     

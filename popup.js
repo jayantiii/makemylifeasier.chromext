@@ -2,7 +2,6 @@
 document.addEventListener('DOMContentLoaded', function() {
   const isExtensionEnv = !!(window.chrome && chrome.runtime && typeof chrome.runtime.sendMessage === 'function');
   const selectedTextEl = document.getElementById('selectedText');
-  const aiModeSelect = document.getElementById('aiMode');
   const promptInput = document.getElementById('prompt');
   const sendBtn = document.getElementById('sendBtn');
   const refreshBtn = document.getElementById('refreshBtn');
@@ -10,20 +9,6 @@ document.addEventListener('DOMContentLoaded', function() {
   const loadingEl = document.getElementById('loading');
   const responseTextEl = document.getElementById('responseText');
   const copyBtn = document.getElementById('copyBtn');
-
-  // Load saved settings (extension only)
-  if (isExtensionEnv) {
-    chrome.storage.local.get(['aiMode'], function(result) {
-      if (result.aiMode) {
-        aiModeSelect.value = result.aiMode;
-      }
-    });
-  }
-
-  // Save settings when changed
-  aiModeSelect.addEventListener('change', function() {
-    if (isExtensionEnv) chrome.storage.local.set({ aiMode: aiModeSelect.value });
-  });
 
   // Refresh selection button
   refreshBtn.addEventListener('click', function() {
@@ -266,23 +251,15 @@ document.addEventListener('DOMContentLoaded', function() {
   // Send to LLM
   sendBtn.addEventListener('click', async function() {
     const selectedText = selectedTextEl.textContent;
-    const aiMode = aiModeSelect.value;
     const customPrompt = promptInput.value.trim();
 
     console.log('Selected text:', selectedText);
-    console.log('AI Mode:', aiMode);
     console.log('Custom prompt:', customPrompt);
     console.log('Is extension env:', isExtensionEnv);
 
-    // For Writer mode, we need either custom prompt or selected text
-    // For Rewriter mode, we need selected text
-    if (aiMode === 'rewriter' && (!selectedText || selectedText.includes('No text selected') || selectedText.includes('🎮'))) {
-      showError('Please select some text to rewrite.');
-      return;
-    }
-
-    if (aiMode === 'writer' && !customPrompt && (!selectedText || selectedText.includes('No text selected') || selectedText.includes('🎮'))) {
-      showError('Please enter a custom prompt or select some text for the Writer.');
+    // Need either custom prompt or selected text
+    if (!customPrompt && (!selectedText || selectedText.includes('No text selected') || selectedText.includes('🎮'))) {
+      showError('Please enter a custom prompt or select some text.');
       return;
     }
 
@@ -293,7 +270,7 @@ document.addEventListener('DOMContentLoaded', function() {
 Profile (use for tailoring without restating it):
 - MS CSE @ UC San Diego (GPA 4.0), AI specialization; TA for AI and GCP ML
 - Perception Researcher: ROS object detection, multimodal sensor fusion
-- HPE Software Engineer: React UI, microservices (gRPC/Protobuf), CI/CD (Jenkins/Helm/Docker), K8s; reduced server management time by 35%; raised test coverage 10%→95%
+- HPE Software Engineer: React UI, microservices (gRPC/Protobuf), CI/CD (Jenkins/Helm/Docker), K8s; reduced server management; raised test coverage 10%→95%
 - HPE R&D Intern: 10k-record mock server; inventory dashboard; test automation
 - Projects: LEGO 6D pose; waste-seg CV + robotic arm (80% accuracy, publication); wind-energy time-series ML; Next.js collab platform
 - Skills: Python, JS/TS, React/Next.js, SQL/NoSQL, Linux, Kafka, PyTorch/TensorFlow, GCP/AWS/Azure, Docker/K8s, CI/CD, testing
@@ -301,32 +278,26 @@ Profile (use for tailoring without restating it):
 Style & constraints:
 - Tone: concise, confident, warm, and professional; US spelling; active voice
 - Cover letters: 150–250 words; 3–5 short paragraphs (hook, match, evidence, motivation, close)
-- Emails: include a clear subject, direct ask/CTA, and sign-off (“Best regards, Jayanti Lahoti”)
+- Emails: include a clear subject, direct ask/CTA, and sign-off ("Best regards, Jayanti Lahoti")
 - Application answers: direct, examples with quantified impact; respect any word/char limits
 - If a job description or context is provided, tailor with relevant achievements and keywords
 - Do not include meta commentary about your process; just the final copy
 - No brackets like [Company], [Role], or placeholders—infer from context or write neutral but complete copy`;
 
-    if (aiMode === 'writer') {
-      // Writer mode: generate new content
-      if (customPrompt && selectedText && !selectedText.includes('No text selected') && !selectedText.includes('🎮')) {
-        content = `${systemPrompt}\n\nUser request: ${customPrompt}\n\nContext: ${selectedText}`;
-      } else if (customPrompt) {
-        content = `${systemPrompt}\n\nUser request: ${customPrompt}`;
-      } else if (selectedText && !selectedText.includes('No text selected') && !selectedText.includes('🎮')) {
-        content = `${systemPrompt}\n\nUser request: Write about this: ${selectedText}`;
-      }
-    } else if (aiMode === 'rewriter') {
-      // Rewriter mode: improve selected text
-      content = `${systemPrompt}\n\nPlease rewrite and improve this text: ${selectedText}`;
+    // Writer mode: generate new content
+    if (customPrompt && selectedText && !selectedText.includes('No text selected') && !selectedText.includes('🎮')) {
+      content = `${systemPrompt}\n\nUser request: ${customPrompt}\n\nContext: ${selectedText}`;
+    } else if (customPrompt) {
+      content = `${systemPrompt}\n\nUser request: ${customPrompt}`;
+    } else if (selectedText && !selectedText.includes('No text selected') && !selectedText.includes('🎮')) {
+      content = `${systemPrompt}\n\nUser request: Write about this: ${selectedText}`;
     }
     
-    console.log('AI Mode:', aiMode);
     console.log('Content for AI:', content);
 
     try {
       showLoading(true);
-      console.log('Using Chrome Built-in AI API:', aiMode);
+      console.log('Using Chrome Built-in AI Writer API');
       
       if (isExtensionEnv) {
         // Check if Chrome Built-in AI APIs are available
@@ -334,11 +305,9 @@ Style & constraints:
         console.log('chrome object:', typeof chrome);
         console.log('chrome.ai:', chrome?.ai);
         console.log('chrome.ai.writer:', chrome?.ai?.writer);
-        console.log('chrome.ai.rewriter:', chrome?.ai?.rewriter);
         
-        // Try different ways to access the AI APIs
+        // Try different ways to access the Writer API
         let aiWriter = null;
-        let aiRewriter = null;
         
         // Check for different possible API locations
         if (chrome?.ai?.writer) {
@@ -349,83 +318,39 @@ Style & constraints:
           aiWriter = window.Writer;
         }
         
-        if (chrome?.ai?.rewriter) {
-          aiRewriter = chrome.ai.rewriter;
-        } else if (chrome?.rewriter) {
-          aiRewriter = chrome.rewriter;
-        } else if (window?.Rewriter) {
-          aiRewriter = window.Rewriter;
-        }
-        
         console.log('Found aiWriter:', !!aiWriter);
-        console.log('Found aiRewriter:', !!aiRewriter);
         
-        if (aiWriter || aiRewriter) {
-          // Use Chrome Built-in AI APIs
-          let result;
-          
-          if (aiMode === 'writer' && aiWriter) {
-            // Use Writer API - need to create instance first
-            try {
-              console.log('Creating Writer instance...');
-              const writer = await aiWriter.create();
-              console.log('Writer instance created:', writer);
-              console.log('Writer methods:', Object.getOwnPropertyNames(writer));
-              console.log('Writer prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(writer)));
-              
-              // Try different method names with language specification
-              if (typeof writer.write === 'function') {
-                result = await writer.write(content, { language: 'en' });
-              } else if (typeof writer.generate === 'function') {
-                result = await writer.generate(content, { language: 'en' });
-              } else if (typeof writer.createText === 'function') {
-                result = await writer.createText(content, { language: 'en' });
-              } else if (typeof writer.complete === 'function') {
-                result = await writer.complete(content, { language: 'en' });
-              } else {
-                // Try calling it directly with language
-                result = await writer(content, { language: 'en' });
-              }
-              
-              console.log('Writer result:', result);
-            } catch (apiError) {
-              console.error('Writer API error:', apiError);
-              throw new Error(`Writer API error: ${apiError.message}`);
+        if (aiWriter) {
+          // Use Chrome Built-in AI Writer API
+          try {
+            console.log('Creating Writer instance...');
+            const writer = await aiWriter.create();
+            console.log('Writer instance created:', writer);
+            console.log('Writer methods:', Object.getOwnPropertyNames(writer));
+            console.log('Writer prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(writer)));
+            
+            // Try different method names with language specification
+            let result;
+            if (typeof writer.write === 'function') {
+              result = await writer.write(content, { language: 'en' });
+            } else if (typeof writer.generate === 'function') {
+              result = await writer.generate(content, { language: 'en' });
+            } else if (typeof writer.createText === 'function') {
+              result = await writer.createText(content, { language: 'en' });
+            } else if (typeof writer.complete === 'function') {
+              result = await writer.complete(content, { language: 'en' });
+            } else {
+              // Try calling it directly with language
+              result = await writer(content, { language: 'en' });
             }
-          } else if (aiMode === 'rewriter' && aiRewriter) {
-            // Use Rewriter API - need to create instance first
-            try {
-              console.log('Creating Rewriter instance...');
-              const rewriter = await aiRewriter.create();
-              console.log('Rewriter instance created:', rewriter);
-              console.log('Rewriter methods:', Object.getOwnPropertyNames(rewriter));
-              console.log('Rewriter prototype methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(rewriter)));
-              
-              // Try different method names with language specification
-              if (typeof rewriter.rewrite === 'function') {
-                result = await rewriter.rewrite(selectedText, content, { language: 'en' });
-              } else if (typeof rewriter.improve === 'function') {
-                result = await rewriter.improve(selectedText, content, { language: 'en' });
-              } else if (typeof rewriter.enhance === 'function') {
-                result = await rewriter.enhance(selectedText, content, { language: 'en' });
-              } else if (typeof rewriter.edit === 'function') {
-                result = await rewriter.edit(selectedText, content, { language: 'en' });
-              } else {
-                // Try calling it directly with both parameters and language
-                result = await rewriter(selectedText, content, { language: 'en' });
-              }
-              
-              console.log('Rewriter result:', result);
-            } catch (apiError) {
-              console.error('Rewriter API error:', apiError);
-              throw new Error(`Rewriter API error: ${apiError.message}`);
-            }
-          } else {
-            throw new Error(`${aiMode} API not available. Please enable Chrome Built-in AI flags.`);
+            
+            console.log('Writer result:', result);
+            console.log('Chrome AI result:', result);
+            showResponse(result.text || result.content || result || 'No response received');
+          } catch (apiError) {
+            console.error('Writer API error:', apiError);
+            throw new Error(`Writer API error: ${apiError.message}`);
           }
-          
-          console.log('Chrome AI result:', result);
-          showResponse(result.text || result.content || result || 'No response received');
         } else {
           // Fallback: Use a simple mock response with your system prompt
           console.log('Chrome Built-in AI not available, using fallback');
@@ -433,27 +358,23 @@ Style & constraints:
           console.log('Available chrome properties:', Object.keys(chrome || {}));
           await new Promise(r => setTimeout(r, 1000));
           
-          if (aiMode === 'writer') {
-            // Generate a proper fallback response based on the prompt
-            let response = `[Writer Mode - Fallback]\n\nBased on your background as a Computer Science Engineering student at UCSD with experience at HPE and the Autonomous Vehicle Lab:\n\n`;
-            
-            if (customPrompt.toLowerCase().includes('cover letter')) {
-              response += `**Cover Letter Template:**\n\nDear Hiring Manager,\n\nI am writing to express my strong interest in the [Position Title] role at [Company Name]. As a Computer Science Engineering student at UCSD with a 4.0 GPA and specialization in Artificial Intelligence, I bring a unique combination of academic excellence and practical experience.\n\nMy professional experience includes:\n• Software Engineer at Hewlett Packard Enterprise (Aug 2023 - Aug 2024): Reduced server management time by 35% with React-based UI, architected CI/CD pipelines\n• Research and Development Intern at HPE (Jan 2023 - July 2023): Built mirage mock server supporting 10,000+ records\n• Current role as Perception Researcher at Autonomous Vehicle Lab: Engineered ROS node for object detection\n\nMy technical skills include Python, JavaScript/TypeScript, React/Next.js, AWS/GCP/Azure, Docker/K8s, and I have experience with PyTorch/TensorFlow for machine learning projects.\n\nI am excited about the opportunity to contribute to [Company Name] and would welcome the chance to discuss how my background aligns with your needs.\n\nSincerely,\nJayanti Lahoti\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
-            } else if (customPrompt.toLowerCase().includes('email')) {
-              response += `**Professional Email:**\n\nSubject: ${customPrompt}\n\nDear [Recipient],\n\nI hope this email finds you well. [Customize based on your specific request]\n\nBest regards,\nJayanti Lahoti\nComputer Science Engineering Student\nUC San Diego\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
-            } else {
-              response += `**Professional Response:**\n\n${customPrompt}\n\nGiven my background in Computer Science Engineering at UCSD, experience at HPE, and current research at the Autonomous Vehicle Lab, I would approach this by [provide specific insights based on your technical background].\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
-            }
-            
-            showResponse(response);
-          } else if (aiMode === 'rewriter') {
-            showResponse(`[Rewriter Mode - Fallback]\n\n**Improved version of your selected text:**\n\n"${selectedText}"\n\n**Suggested improvements:**\n• Fix grammar and spelling\n• Use more professional tone\n• Add specific details and examples\n• Structure with clear paragraphs\n\n[Note: Enable Chrome Built-in AI flags for full rewriting functionality]`);
+          // Generate a proper fallback response based on the prompt
+          let response = `[Writer Mode - Fallback]\n\nBased on your background as a Computer Science Engineering student at UCSD with experience at HPE and the Autonomous Vehicle Lab:\n\n`;
+          
+          if (customPrompt.toLowerCase().includes('cover letter')) {
+            response += `**Cover Letter Template:**\n\nDear Hiring Manager,\n\nI am writing to express my strong interest in the [Position Title] role at [Company Name]. As a Computer Science Engineering student at UCSD with a 4.0 GPA and specialization in Artificial Intelligence, I bring a unique combination of academic excellence and practical experience.\n\nMy professional experience includes:\n• Software Engineer at Hewlett Packard Enterprise (Aug 2023 - Aug 2024): Reduced server management time by 35% with React-based UI, architected CI/CD pipelines\n• Research and Development Intern at HPE (Jan 2023 - July 2023): Built mirage mock server supporting 10,000+ records\n• Current role as Perception Researcher at Autonomous Vehicle Lab: Engineered ROS node for object detection\n\nMy technical skills include Python, JavaScript/TypeScript, React/Next.js, AWS/GCP/Azure, Docker/K8s, and I have experience with PyTorch/TensorFlow for machine learning projects.\n\nI am excited about the opportunity to contribute to [Company Name] and would welcome the chance to discuss how my background aligns with your needs.\n\nSincerely,\nJayanti Lahoti\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
+          } else if (customPrompt.toLowerCase().includes('email')) {
+            response += `**Professional Email:**\n\nSubject: ${customPrompt}\n\nDear [Recipient],\n\nI hope this email finds you well. [Customize based on your specific request]\n\nBest regards,\nJayanti Lahoti\nComputer Science Engineering Student\nUC San Diego\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
+          } else {
+            response += `**Professional Response:**\n\n${customPrompt}\n\nGiven my background in Computer Science Engineering at UCSD, experience at HPE, and current research at the Autonomous Vehicle Lab, I would approach this by [provide specific insights based on your technical background].\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
           }
+          
+          showResponse(response);
         }
       } else {
         // Preview mode: synthesize a mock response
         await new Promise(r => setTimeout(r, 400));
-        showResponse(`[Preview] ${aiMode === 'writer' ? 'Writer' : 'Rewriter'} response would appear here.`);
+        showResponse(`[Preview] Writer response would appear here.`);
       }
     } catch (error) {
       console.error('Chrome AI API error:', error);
