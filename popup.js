@@ -9,6 +9,89 @@ document.addEventListener('DOMContentLoaded', function() {
   const loadingEl = document.getElementById('loading');
   const responseTextEl = document.getElementById('responseText');
   const copyBtn = document.getElementById('copyBtn');
+  const settingsBtn = document.getElementById('settingsBtn');
+  const settingsPanel = document.getElementById('settingsPanel');
+  const systemPromptTextarea = document.getElementById('systemPrompt');
+  const saveSystemPromptBtn = document.getElementById('saveSystemPromptBtn');
+  const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
+
+  // Default system prompt template
+  const defaultSystemPrompt = `You are a professional writing assistant. Always produce a final, send-ready answer with no placeholders, brackets, or TODOs. Do not ask questions unless explicitly requested.
+
+Your profile and writing style should be defined here. This will help the AI tailor responses to your needs.`;
+
+  // Load saved system prompt on startup
+  let userSystemPrompt = null;
+  if (isExtensionEnv) {
+    chrome.storage.local.get(['systemPrompt'], function(result) {
+      if (result.systemPrompt && result.systemPrompt.trim()) {
+        userSystemPrompt = result.systemPrompt;
+        systemPromptTextarea.value = result.systemPrompt;
+      } else {
+        // First time user - show default template
+        systemPromptTextarea.value = defaultSystemPrompt;
+      }
+    });
+  } else {
+    // Preview mode
+    systemPromptTextarea.value = defaultSystemPrompt;
+  }
+
+  // Settings panel toggle
+  settingsBtn.addEventListener('click', function() {
+    const isVisible = settingsPanel.style.display !== 'none';
+    settingsPanel.style.display = isVisible ? 'none' : 'block';
+    if (!isVisible && isExtensionEnv) {
+      // Load current saved prompt when opening settings
+      chrome.storage.local.get(['systemPrompt'], function(result) {
+        if (result.systemPrompt) {
+          systemPromptTextarea.value = result.systemPrompt;
+        } else {
+          systemPromptTextarea.value = defaultSystemPrompt;
+        }
+      });
+    }
+  });
+
+  // Save system prompt
+  saveSystemPromptBtn.addEventListener('click', function() {
+    const prompt = systemPromptTextarea.value.trim();
+    if (!prompt) {
+      showError('System prompt cannot be empty. Please enter a prompt.');
+      return;
+    }
+    
+    if (isExtensionEnv) {
+      chrome.storage.local.set({ systemPrompt: prompt }, function() {
+        userSystemPrompt = prompt;
+        settingsPanel.style.display = 'none';
+        showResponse('✅ System prompt saved successfully!');
+        setTimeout(() => {
+          responseEl.style.display = 'none';
+        }, 2000);
+      });
+    } else {
+      // Preview mode
+      userSystemPrompt = prompt;
+      settingsPanel.style.display = 'none';
+      alert('System prompt saved (preview mode)');
+    }
+  });
+
+  // Cancel settings
+  cancelSettingsBtn.addEventListener('click', function() {
+    settingsPanel.style.display = 'none';
+    // Revert to saved prompt
+    if (isExtensionEnv) {
+      chrome.storage.local.get(['systemPrompt'], function(result) {
+        if (result.systemPrompt) {
+          systemPromptTextarea.value = result.systemPrompt;
+        } else {
+          systemPromptTextarea.value = defaultSystemPrompt;
+        }
+      });
+    }
+  });
 
   // Refresh selection button
   refreshBtn.addEventListener('click', function() {
@@ -263,26 +346,40 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
+    // Get system prompt - need to load from storage if not already loaded
+    const getSystemPrompt = () => {
+      return new Promise((resolve) => {
+        if (userSystemPrompt) {
+          resolve(userSystemPrompt);
+        } else if (isExtensionEnv) {
+          chrome.storage.local.get(['systemPrompt'], function(result) {
+            if (result.systemPrompt && result.systemPrompt.trim()) {
+              userSystemPrompt = result.systemPrompt;
+              resolve(result.systemPrompt);
+            } else {
+              resolve(defaultSystemPrompt);
+            }
+          });
+        } else {
+          const textareaValue = systemPromptTextarea.value.trim();
+          resolve(textareaValue || defaultSystemPrompt);
+        }
+      });
+    };
+
+    // Load system prompt
+    const systemPrompt = await getSystemPrompt();
+    
+    // Warn if using default prompt (only if it's exactly the default)
+    if (systemPrompt === defaultSystemPrompt || !systemPrompt || systemPrompt.trim() === '') {
+      if (confirm('No system prompt is set. Would you like to configure one now? (Click OK to open settings, Cancel to continue with default)')) {
+        settingsPanel.style.display = 'block';
+        return;
+      }
+    }
+
     // Build content for Chrome Built-in AI APIs
     let content = '';
-    let systemPrompt = `You are a professional writing assistant for Jayanti Lahoti. Always produce a final, send-ready answer with no placeholders, brackets, or TODOs. Do not ask questions unless explicitly requested.
-
-Profile (use for tailoring without restating it):
-- MS CSE @ UC San Diego (GPA 4.0), AI specialization; TA for AI and GCP ML
-- Perception Researcher: ROS object detection, multimodal sensor fusion
-- HPE Software Engineer: React UI, microservices (gRPC/Protobuf), CI/CD (Jenkins/Helm/Docker), K8s; reduced server management; raised test coverage 10%→95%
-- HPE R&D Intern: 10k-record mock server; inventory dashboard; test automation
-- Projects: LEGO 6D pose; waste-seg CV + robotic arm (80% accuracy, publication); wind-energy time-series ML; Next.js collab platform
-- Skills: Python, JS/TS, React/Next.js, SQL/NoSQL, Linux, Kafka, PyTorch/TensorFlow, GCP/AWS/Azure, Docker/K8s, CI/CD, testing
-
-Style & constraints:
-- Tone: concise, confident, warm, and professional; US spelling; active voice
-- Cover letters: 150–250 words; 3–5 short paragraphs (hook, match, evidence, motivation, close)
-- Emails: include a clear subject, direct ask/CTA, and sign-off ("Best regards, Jayanti Lahoti")
-- Application answers: direct, examples with quantified impact; respect any word/char limits
-- If a job description or context is provided, tailor with relevant achievements and keywords
-- Do not include meta commentary about your process; just the final copy
-- No brackets like [Company], [Role], or placeholders—infer from context or write neutral but complete copy`;
 
     // Writer mode: generate new content
     if (customPrompt && selectedText && !selectedText.includes('No text selected') && !selectedText.includes('🎮')) {
@@ -352,21 +449,21 @@ Style & constraints:
             throw new Error(`Writer API error: ${apiError.message}`);
           }
         } else {
-          // Fallback: Use a simple mock response with your system prompt
+          // Fallback: Use a simple mock response
           console.log('Chrome Built-in AI not available, using fallback');
           console.log('Chrome version:', navigator.userAgent);
           console.log('Available chrome properties:', Object.keys(chrome || {}));
           await new Promise(r => setTimeout(r, 1000));
           
-          // Generate a proper fallback response based on the prompt
-          let response = `[Writer Mode - Fallback]\n\nBased on your background as a Computer Science Engineering student at UCSD with experience at HPE and the Autonomous Vehicle Lab:\n\n`;
+          // Generate a generic fallback response based on the prompt
+          let response = `[Writer Mode - Fallback]\n\nChrome Built-in AI is not available. Please enable the "writer-api-for-gemini-nano" flag in chrome://flags/ and restart Chrome.\n\n`;
           
           if (customPrompt.toLowerCase().includes('cover letter')) {
-            response += `**Cover Letter Template:**\n\nDear Hiring Manager,\n\nI am writing to express my strong interest in the [Position Title] role at [Company Name]. As a Computer Science Engineering student at UCSD with a 4.0 GPA and specialization in Artificial Intelligence, I bring a unique combination of academic excellence and practical experience.\n\nMy professional experience includes:\n• Software Engineer at Hewlett Packard Enterprise (Aug 2023 - Aug 2024): Reduced server management time by 35% with React-based UI, architected CI/CD pipelines\n• Research and Development Intern at HPE (Jan 2023 - July 2023): Built mirage mock server supporting 10,000+ records\n• Current role as Perception Researcher at Autonomous Vehicle Lab: Engineered ROS node for object detection\n\nMy technical skills include Python, JavaScript/TypeScript, React/Next.js, AWS/GCP/Azure, Docker/K8s, and I have experience with PyTorch/TensorFlow for machine learning projects.\n\nI am excited about the opportunity to contribute to [Company Name] and would welcome the chance to discuss how my background aligns with your needs.\n\nSincerely,\nJayanti Lahoti\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
+            response += `**Cover Letter Template:**\n\nDear Hiring Manager,\n\nI am writing to express my strong interest in the [Position Title] role at [Company Name].\n\n[Your background and qualifications]\n\n[Why you're interested and how you can contribute]\n\nSincerely,\n[Your Name]\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
           } else if (customPrompt.toLowerCase().includes('email')) {
-            response += `**Professional Email:**\n\nSubject: ${customPrompt}\n\nDear [Recipient],\n\nI hope this email finds you well. [Customize based on your specific request]\n\nBest regards,\nJayanti Lahoti\nComputer Science Engineering Student\nUC San Diego\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
+            response += `**Professional Email:**\n\nSubject: ${customPrompt}\n\nDear [Recipient],\n\nI hope this email finds you well.\n\n[Your message here]\n\nBest regards,\n[Your Name]\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
           } else {
-            response += `**Professional Response:**\n\n${customPrompt}\n\nGiven my background in Computer Science Engineering at UCSD, experience at HPE, and current research at the Autonomous Vehicle Lab, I would approach this by [provide specific insights based on your technical background].\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
+            response += `**Professional Response:**\n\n${customPrompt}\n\n[Your response here based on your system prompt settings]\n\n[Note: Enable Chrome Built-in AI flags for more sophisticated responses]`;
           }
           
           showResponse(response);

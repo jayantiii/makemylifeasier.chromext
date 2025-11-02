@@ -136,6 +136,21 @@
   <div class="container">
     <div class="header">
       <h1>Text to LLM</h1>
+      <button class="btn" id="settingsBtn" style="margin-top: 8px; font-size: 11px; padding: 4px 10px; background: #6c757d;">⚙️ Settings</button>
+    </div>
+    
+    <div class="settings-panel" id="settingsPanel" style="display: none; background: #fff; border: 1px solid #ffd6e7; border-radius: 10px; padding: 12px; margin-bottom: 12px;">
+      <div class="input-group">
+        <label for="systemPrompt">System Prompt (Your writing assistant context):</label>
+        <textarea id="systemPrompt" rows="8" placeholder="Enter your system prompt here (your profile, writing style, etc.)"></textarea>
+        <small style="color: #666; font-size: 11px; margin-top: 4px; display: block;">
+          This prompt provides context about you and your writing preferences. It will be included in all AI requests.
+        </small>
+        <div style="margin-top: 8px; display: flex; gap: 8px;">
+          <button class="btn" id="saveSystemPromptBtn" style="flex: 1; padding: 6px 12px; font-size: 12px;">💾 Save</button>
+          <button class="btn" id="cancelSettingsBtn" style="flex: 1; padding: 6px 12px; font-size: 12px; background: #6c757d;">Cancel</button>
+        </div>
+      </div>
     </div>
     
     <div class="selected-text" id="selectedText">
