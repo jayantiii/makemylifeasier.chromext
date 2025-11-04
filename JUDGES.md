@@ -8,10 +8,30 @@ This guide will help you test the Highlight to Enlight Chrome extension.
 
 1. **Chrome Browser**: Version 138+ (Chrome Built-in AI requires recent Chrome versions)
 2. **Enable Developer Mode**: Required to load the extension
+3. **Git** (optional): For cloning the repository, or download as ZIP
 
 ---
 
-## Step 1: Enable Chrome Built-in AI Flags
+## Step 1: Clone or Download the Repository
+
+### Option A: Using Git
+
+```bash
+git clone https://github.com/jayantiii/makemylifeasier.chromext.git
+cd makemylifeasier.chromext
+```
+
+### Option B: Download as ZIP
+
+1. Download the repository as a ZIP file from GitHub
+2. Extract the ZIP file to a folder on your computer
+3. Note the location of the extracted folder
+
+Make sure you have the folder containing `manifest.json`, `popup.html`, `popup.js`, `content.js`, `background.js`, etc.
+
+---
+
+## Step 2: Enable Chrome Built-in AI Flags
 
 The extension uses Chrome's built-in AI Writer API, which requires experimental flags to be enabled:
 
@@ -22,17 +42,17 @@ The extension uses Chrome's built-in AI Writer API, which requires experimental 
 
 ---
 
-## Step 2: Load the Extension
+## Step 3: Load the Extension
 
 1. Open Chrome and navigate to `chrome://extensions/`
 2. Enable **"Developer mode"** (toggle in the top right)
 3. Click **"Load unpacked"**
-4. Select the folder containing the extension files (the folder with `manifest.json`, `popup.html`, `popup.js`, etc.)
+4. Select the folder containing the extension files (the cloned/extracted folder with `manifest.json`, `popup.html`, `popup.js`, etc.)
 5. The extension should now appear in your extensions list
 
 ---
 
-## Step 3: Pin the Extension
+## Step 4: Pin the Extension
 
 1. Click the puzzle icon (extensions menu) in Chrome's toolbar
 2. Find "Highlight to Enlight" or "Text to LLM"
@@ -40,7 +60,7 @@ The extension uses Chrome's built-in AI Writer API, which requires experimental 
 
 ---
 
-## Step 4: Configure System Prompt (First Time Setup)
+## Step 5: Configure System Prompt (First Time Setup)
 
 1. Click the extension icon in the toolbar
 2. Click the **"Settings"** button
@@ -53,7 +73,7 @@ The extension uses Chrome's built-in AI Writer API, which requires experimental 
 
 ---
 
-## Step 5: Test Text Selection
+## Step 6: Test Text Selection
 
 ### Test 1: Basic Text Selection
 
@@ -80,7 +100,7 @@ The extension uses Chrome's built-in AI Writer API, which requires experimental 
 
 ---
 
-## Step 6: Test AI Writing Features
+## Step 7: Test AI Writing Features
 
 ### Test 1: Generate Cover Letter
 
@@ -120,7 +140,7 @@ The extension uses Chrome's built-in AI Writer API, which requires experimental 
 
 ---
 
-## Step 7: Test Copy Functionality
+## Step 8: Test Copy Functionality
 
 1. After getting an AI response, click the **"Copy"** button
 2. Open a text editor or email composer
@@ -129,7 +149,7 @@ The extension uses Chrome's built-in AI Writer API, which requires experimental 
 
 ---
 
-## Step 8: Test Settings
+## Step 9: Test Settings
 
 1. Click the extension icon
 2. Click **"Settings"**
@@ -148,7 +168,7 @@ The extension uses Chrome's built-in AI Writer API, which requires experimental 
 
 ---
 
-## Step 9: Test Error Handling
+## Step 10: Test Error Handling
 
 ### Test 1: No Text Selected
 
@@ -167,7 +187,7 @@ If Chrome AI flags are not enabled or not working:
 
 ---
 
-## Step 10: Test Across Different Websites
+## Step 11: Test Across Different Websites
 
 Test the extension on various websites to verify text selection works everywhere:
 
@@ -221,6 +241,8 @@ Test the extension on various websites to verify text selection works everywhere
 ## Contact
 
 If you encounter any issues during testing or have questions, please refer to the project README or contact the developer.
+Jayanti Lahoti
+jayantirl2001@gmail.com
 
 Thank you for testing Highlight to Enlight!
 
